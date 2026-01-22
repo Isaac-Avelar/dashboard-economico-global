@@ -85,32 +85,53 @@ else:
 st.subheader("🇪🇺 Europa")
 
 @st.cache_data
-
 def get_eurostat_gdp():
+    """
+    PIB real da Zona do Euro (variação percentual),
+    tratado corretamente para a API multidimensional do Eurostat.
+    """
     url = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/namq_10_gdp"
     params = {
-        "geo": "EA19",
-        "unit": "CP_MEUR",
+        "geo": "EA20",
         "na_item": "B1GQ",
-        "time": "2020-2025"
+        "unit": "CLV_PCH_PRE",
+        "s_adj": "SCA"
     }
-    r = requests.get(url, params=params)
-    data = r.json()["value"]
-    dates = r.json()["dimension"]["time"]["category"]["index"]
 
-    df = pd.DataFrame({
-        "date": list(dates.keys()),
-        "value": list(data.values())
-    })
-    df["date"] = pd.to_datetime(df["date"])
-    return df.sort_values("date")
+    r = requests.get(url, params=params)
+    json_data = r.json()
+
+    values = json_data.get("value", {})
+    time_index = (
+        json_data
+        .get("dimension", {})
+        .get("time", {})
+        .get("category", {})
+        .get("index", {})
+    )
+
+    data = []
+    for time_label, time_pos in time_index.items():
+        key = str(time_pos)
+        if key in values:
+            data.append({
+                "date": time_label,
+                "value": values[key]
+            })
+
+    df = pd.DataFrame(data)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+    return df.dropna().sort_values("date")
 
 try:
     euro_gdp = get_eurostat_gdp()
-    st.metric("PIB Zona do Euro", f"{euro_gdp['value'].iloc[-1]:,.0f}")
+    st.metric("PIB Zona do Euro (YoY)", f"{euro_gdp['value'].iloc[-1]:.2f}%")
     st.line_chart(euro_gdp.set_index("date"))
-except:
-    st.warning("Erro ao carregar dados do Eurostat")
+except Exception as e:
+    st.warning(f"Erro ao carregar dados do Eurostat: {e}")
+
 
 # ============================================
 # CHINA | WORLD BANK (INTEGRAÇÃO)
